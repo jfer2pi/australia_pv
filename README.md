@@ -36,6 +36,10 @@ If no data at all can be loaded, the app shows a page explaining this instead of
 
 `Major_Power_Stations.csv` in this repo is GA's November 2026 export (430 stations, 64 of them solar, attributes sourced from AEMO in January 2026). It uses GA's newer column layout (`feature_name`, `status`, `generation_capacity_mw`, `latitude`, `longitude`), which the app reads alongside the older REST field names. Note that AEMO's page also lists a "Generating Unit Expected Closure Year" workbook: that one only holds retirement years and is not the file the app needs.
 
+`NEM Generation Information Oct 2026.xlsx` is AEMO's October 2026 release. Its "Generator Information" sheet lists 366 solar PV units at 356 sites: 12.1 GW in service, 1.2 GW in commissioning, 2.9 GW committed (including Committed\*), 6.0 GW anticipated and 56.2 GW publicly announced (AC). Checking it against the app showed that owners sit under "Site Owner", unit counts under "Unit Count", and that AC and DC capacity are separate columns; the app reads AC. Most in-service units have no Full Commercial Use Date, so the trajectory chart's operating history is thin, while the pipeline years are well populated.
+
+Only about 64 sites can take coordinates from Geoscience Australia, so the *Refresh data* workflow also geocodes the rest with OpenStreetMap and commits `au_geocode_cache.csv`, so the deployed app never geocodes.
+
 **Caching.** The parsed result is cached to `au_solar.rds` for 24 h; the sidebar button rebuilds it. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
 
 ## How it was built

@@ -5,9 +5,10 @@
 #
 # Data (combined at startup, cached to au_solar.rds next to this file):
 #   1. AEMO, NEM Generation Information (primary, published quarterly).
-#      Every existing and proposed generating site in the National Electricity
-#      Market (QLD, NSW incl. ACT, VIC, SA, TAS) with owner, nameplate MW,
-#      status and expected full commercial use date. The app finds the newest
+#      Every existing and proposed generating unit in the National Electricity
+#      Market (QLD, NSW incl. ACT, VIC, SA, TAS), sheet "Generator Information":
+#      Site Name, Site Owner, Region, Technology Type, Unit Count, Agg Nameplate
+#      Capacity (MW AC / DC), Commitment Status, Full Commercial Use Date. The app finds the newest
 #      workbook on AEMO's Generation Information page and downloads it; if
 #      AEMO can't be reached it reads the newest *generation*information*.xlsx
 #      saved next to app.R.
@@ -307,14 +308,17 @@ read_aemo <- function(path) {
     sheet   = d$sheet_,
     region  = pickr(d, "^region"),
     plant   = trimws(pickr(d, "^site_name", "^station_name", "^project_name")),
-    owner   = trimws(pickr(d, "^owner", "^participant", "^proponent", "^developer")),
+    owner   = trimws(pickr(d, "^site_owner$", "^owner", "^participant", "^proponent", "^developer")),
     tech    = trimws(pickr(d, "^technology", "^tech")),
     tech_all = tech_combo,
     status_txt = gsub("\\s+", " ", trimws(gsub("\\bNA\\b", "", status))),
     duid    = pickr(d, "^duid"),
-    units   = num(pickr(d, "number_of_units", "^units", "^no_of_units")),
-    mw      = num(pickr(d, "upper_nameplate", "nameplate.*mw", "nameplate", "capacity_mw",
-                        "^capacity", "_mw$")),
+    units   = num(pickr(d, "^unit_count$", "number_of_units", "^units", "^no_of_units")),
+    # AC nameplate ("Agg Nameplate Capacity (MW AC)" since Oct 2025); DC is a separate column
+    mw      = num(pickr(d, "^agg_nameplate_capacity_mw_ac$", "nameplate.*mw_ac", "upper_nameplate",
+                        "nameplate.*mw(?!_dc)", "nameplate(?!.*dc)", "capacity_mw", "^capacity", "_mw$")),
+    mw_dc   = num(pickr(d, "^agg_nameplate_capacity_mw_dc$", "nameplate.*mw_dc")),
+    tech_detail = trimws(pickr(d, "^technology_detail$")),
     cod_raw = pickr(d, "full_commercial_use", "commercial_use", "commercial_operation",
                     "expected.*(date|commission)", "commissioning_date", "^start_date"),
     closure = pickr(d, "closure"),
@@ -333,7 +337,9 @@ read_aemo <- function(path) {
   # Unit-level rows -> one row per site and stage
   a |>
     group_by(plant, state, stage) |>
-    summarise(region = first(region), owner = first(na.omit(owner)), tech = first(tech),
+    summarise(region = first(region), owner = first(na.omit(owner)),
+              tech = paste(unique(na.omit(c(first(tech), first(na.omit(tech_detail))))), collapse = ", "),
+              mw_dc = suppressWarnings(sum(mw_dc, na.rm = TRUE)),
               status = paste(unique(status_txt), collapse = "; "),
               duid = paste(unique(na.omit(duid)), collapse = ", "),
               units = suppressWarnings(sum(units, na.rm = TRUE)),

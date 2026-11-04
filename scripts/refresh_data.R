@@ -2,6 +2,8 @@
 # even when AEMO or Geoscience Australia refuse the hosting server.
 #   ga_solar_stations.csv          Geoscience Australia solar power stations
 #   <AEMO NEM Generation Information>.xlsx, when AEMO allows the download
+#   au_geocode_cache.csv           OpenStreetMap locations for AEMO sites that
+#                                  have no Geoscience Australia match
 # Run from the repo root: Rscript scripts/refresh_data.R
 # Reuses the data functions in app.R (everything above "Build + cache").
 
@@ -13,7 +15,7 @@ changed <- character()
 
 # Geoscience Australia
 ga <- tryCatch(get_ga(), error = function(e) { message("GA failed: ", conditionMessage(e)); NULL })
-if (!is.null(ga) && !identical(attr(ga, "from"), GA_LOCAL)) {
+if (!is.null(ga) && grepl("^https?://", attr(ga, "from"))) {
   out <- ga |> mutate(revised = format(revised, "%Y-%m-%d")) |> arrange(state, plant)
   old <- if (file.exists(GA_LOCAL)) read.csv(GA_LOCAL, colClasses = "character") else NULL
   write.csv(out, GA_LOCAL, row.names = FALSE, fileEncoding = "UTF-8")
@@ -37,5 +39,18 @@ res <- tryCatch({
   }
   message("AEMO: ", name)
 }, error = function(e) message("AEMO failed: ", conditionMessage(e)))
+
+# Geocode AEMO sites without a GA match, so the deployed app never has to
+a <- tryCatch({
+  src <- get_aemo()
+  if (is.null(src$path)) stop("no AEMO workbook")
+  a <- match_ga(read_aemo(src$path), ga)
+  a$lat <- coalesce(a$lat, a$ga_lat); a$lon <- coalesce(a$lon, a$ga_lon)
+  before <- nrow(read_geocache())
+  a <- geocode_missing(a)
+  message("Geocode cache: ", before, " -> ", nrow(read_geocache()), " entries; ",
+          sum(is.na(a$lat) & is.na(a$geo_lat)), " AEMO sites still unmapped")
+  if (nrow(read_geocache()) != before) changed <- c(changed, GEOCODE_FILE)
+}, error = function(e) message("Geocoding skipped: ", conditionMessage(e)))
 
 writeLines(changed, "refresh_changed.txt")
