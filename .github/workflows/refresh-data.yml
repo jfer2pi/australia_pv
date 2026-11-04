@@ -35,7 +35,7 @@ jobs:
 
       - name: Write manifest.json
         run: |
-          Rscript -e 'files <- c("app.R", list.files(pattern = "(generation.?information.*\\.xlsx|^au_geocode_cache\\.csv|^ga_solar_stations\\.csv)$", ignore.case = TRUE)); print(files); rsconnect::writeManifest(appFiles = files)'
+          Rscript -e 'files <- c("app.R", list.files(pattern = "(generation.?information.*\\.xlsx|^au_geocode_cache\\.csv|^ga_solar_stations\\.csv|power.?stations?.*\\.csv)$", ignore.case = TRUE)); print(files); rsconnect::writeManifest(appFiles = files)'
 
       - name: Commit if changed
         run: |

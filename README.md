@@ -27,7 +27,12 @@ The whole app is one self-contained `app.R`. It downloads its own data, so nothi
 - falls back to snapshots committed in this repo: `ga_solar_stations.csv` and the AEMO workbook;
 - if AEMO is still missing, runs on Geoscience Australia alone for every state (operating and proposed sites, no committed pipeline or dates) and says so in the sidebar.
 
-The *Refresh data* GitHub Action writes those snapshots on the 3rd of every month, or on demand from the Actions tab, and rewrites `manifest.json`. If AEMO refuses GitHub's servers too, download the workbook yourself and commit it next to `app.R`.
+The *Refresh data* GitHub Action tries to write those snapshots on the 3rd of every month, or on demand from the Actions tab, and rewrites `manifest.json`. In practice, in November 2026 both sources refused GitHub's servers too: AEMO with 403, and GA's current services with a site-wide 404, while GA's older service had no solar plants. So the reliable route is to download both files from a normal connection and commit them next to `app.R`:
+
+- the AEMO NEM Generation Information `.xlsx`, keeping "generation information" in the name;
+- Geoscience Australia's Major Power Stations as CSV from its [ArcGIS Hub page](https://amsis-geoscience-au.hub.arcgis.com/datasets/digitalatlas::major-power-stations-1), keeping "power stations" in the name.
+
+If no data at all can be loaded, the app shows a page explaining this instead of failing to start.
 
 **Caching.** The parsed result is cached to `au_solar.rds` for 24 h; the sidebar button rebuilds it. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
 
@@ -37,7 +42,7 @@ The *Refresh data* GitHub Action writes those snapshots on the 3rd of every mont
 2. **Starting point.** The app reuses the US app's structure and theme, and the Brazil app's handling for unreachable hosts and local fallback files.
 3. **Reading AEMO.** The workbook's sheets carry notes above each table, so the app finds the header row (the one with "Site Name") on each sheet, matches columns by pattern, keeps solar PV rows, and rolls unit-level rows up to one row per site and stage.
 4. **Self-contained.** Everything lives in `app.R`, with no keys or manual downloads needed.
-5. **First deploys.** Posit Connect Cloud got HTTP 403 from AEMO and the app failed to start. AEMO requests now send browser-like headers, and when the workbook still can't be had the app falls back to Geoscience Australia for every state instead of stopping. A rebuild that loses AEMO never overwrites a cached build that had it. GA's National service then answered 404 as well, so the app now tries several GA services and reads committed snapshots kept current by a monthly GitHub Action.
+5. **First deploys.** Posit Connect Cloud got HTTP 403 from AEMO and the app failed to start. AEMO requests now send browser-like headers, and when the workbook still can't be had the app falls back to Geoscience Australia for every state instead of stopping. A rebuild that loses AEMO never overwrites a cached build that had it. GA's National service then answered 404 as well, so the app now tries several GA services, searches GA's catalogue if they move, and reads committed copies of the data. Running the refresh workflow showed that GitHub's servers are refused by both sources too, which settled it: the data files are downloaded by hand and committed, as with the Brazil app.
 
 ## Run locally
 

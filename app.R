@@ -88,6 +88,10 @@ GA_ENDPOINTS <- paste0(GA_BASE, c("Foundation_Electricity_Infrastructure/MapServ
                                   "Electricity_Infrastructure/MapServer/1"))
 GA_PAGE  <- GA_ENDPOINTS[1]
 GA_LOCAL <- "ga_solar_stations.csv"   # snapshot written by the refresh workflow
+# GA's own download (ArcGIS Hub "Major Power Stations" as CSV) also works if
+# saved next to app.R with "power station" in the name
+GA_HUB_PATTERN <- "power[-_ ]?stations?.*\\.csv$"
+GA_HUB_PAGE <- "https://amsis-geoscience-au.hub.arcgis.com/datasets/digitalatlas::major-power-stations-1"
 NOMINATIM_URL <- "https://nominatim.openstreetmap.org/search"
 
 STAGES <- c("Operating", "Commissioning", "Committed", "Anticipated", "Proposed")
@@ -478,6 +482,18 @@ get_ga <- function() {
              revised = as.Date(revised))
     return(structure(g, from = GA_LOCAL))
   }
+  hub <- list.files(".", pattern = GA_HUB_PATTERN, ignore.case = TRUE)
+  if (length(hub)) {
+    f <- hub[which.max(file.mtime(hub))]
+    message("GA: using local ", f)
+    d <- read.csv(f, colClasses = "character", encoding = "UTF-8", check.names = FALSE)
+    names(d) <- tolower(clean_names(names(d)))
+    d$lon_ <- num(pickr(d, "^x_coordinate$", "^x$", "^longitude$", "^lon"))
+    d$lat_ <- num(pickr(d, "^y_coordinate$", "^y$", "^latitude$", "^lat"))
+    fuel <- tolower(paste(pickr(d, "^primaryfueltype$"), pickr(d, "^primarysubfueltype$")))
+    g <- ga_standardise(as_tibble(d[grepl("solar|photovolt", fuel), ]))
+    if (nrow(g)) return(structure(g, from = f))
+  }
   stop(paste(c("no GA service answered", why), collapse = "; "), call. = FALSE)
 }
 
@@ -667,7 +683,9 @@ current_data <- local({
     val
   }
 })
-invisible(current_data())  # fail fast at startup with a clear message
+# A startup without any data shows instructions rather than crashing
+data_or_error <- function() tryCatch(current_data(), error = function(e) e)
+invisible(data_or_error())
 
 # ---- Linear design tokens ---------------------------------------------------
 
@@ -814,8 +832,28 @@ state_choices <- function(codes) {
 # ---- UI ---------------------------------------------------------------------
 
 # UI is a function so every new visitor gets controls built from the newest snapshot
+no_data_page <- function(e) {
+  page_fillable(
+    theme = theme, title = "Australia Solar PV Fleet",
+    card(
+      card_header("Australia Solar PV Fleet: no data yet"),
+      card_body(
+        p("The app couldn't load any data. AEMO and Geoscience Australia often refuse cloud servers, ",
+          "so the deployed app reads copies saved next to app.R."),
+        tags$pre(conditionMessage(e)),
+        p(tags$b("To fix it, add either or both files to the repo and redeploy:")),
+        tags$ul(
+          tags$li("AEMO NEM Generation Information .xlsx from ",
+                  a(AEMO_PAGE, href = AEMO_PAGE, target = "_blank"),
+                  " (keep 'generation information' in the name)."),
+          tags$li("Geoscience Australia Major Power Stations as CSV from ",
+                  a("the ArcGIS Hub page", href = GA_HUB_PAGE, target = "_blank"),
+                  " (keep 'power stations' in the name).")))))
+}
+
 ui <- function(req) {
-d <- current_data()
+d <- data_or_error()
+if (inherits(d, "error")) return(no_data_page(d))
 yr_rng <- d$yr_rng; SITE_MW_MAX <- d$site_max
 
 page_sidebar(
@@ -899,7 +937,9 @@ page_sidebar(
 
 server <- function(input, output, session) {
 
-  D <- reactiveVal(current_data())
+  d0 <- data_or_error()
+  if (inherits(d0, "error")) return(invisible())
+  D <- reactiveVal(d0)
 
   output$period_tag <- renderText(D()$period_label)
 
