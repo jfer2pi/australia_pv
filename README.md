@@ -20,6 +20,8 @@ The whole app is one self-contained `app.R`. It downloads its own data, so nothi
 
 **Locations** come from AEMO's own coordinates when the workbook has them, then a Geoscience Australia name match, then Nominatim. Geocoded points are approximate and say so in the popup and the site table. Sites with no location stay in the tables, marked "not mapped".
 
+**When AEMO blocks the server.** AEMO's site answers some cloud hosts with HTTP 403, which is what happened on the first Posit Connect Cloud deploy. The app no longer stops: it starts on Geoscience Australia alone (operating and proposed sites in every state, no committed pipeline or dates) and says so in the sidebar. Committing a copy of the AEMO workbook next to `app.R` restores the full AEMO view on any host.
+
 **Caching.** The parsed result is cached to `au_solar.rds` for 24 h; the sidebar button rebuilds it. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
 
 ## How it was built
@@ -28,6 +30,7 @@ The whole app is one self-contained `app.R`. It downloads its own data, so nothi
 2. **Starting point.** The app reuses the US app's structure and theme, and the Brazil app's handling for unreachable hosts and local fallback files.
 3. **Reading AEMO.** The workbook's sheets carry notes above each table, so the app finds the header row (the one with "Site Name") on each sheet, matches columns by pattern, keeps solar PV rows, and rolls unit-level rows up to one row per site and stage.
 4. **Self-contained.** Everything lives in `app.R`, with no keys or manual downloads needed.
+5. **First deploy.** Posit Connect Cloud got HTTP 403 from AEMO and the app failed to start. AEMO requests now send browser-like headers, and when the workbook still can't be had the app falls back to Geoscience Australia for every state instead of stopping. A rebuild that loses AEMO never overwrites a cached build that had it.
 
 ## Run locally
 

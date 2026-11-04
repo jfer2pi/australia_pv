@@ -58,6 +58,20 @@ GEOCODE_MAX     <- 600  # most new lookups per build (about 10 min at 1/s)
 # options(au_pv.geocode = FALSE) skips Nominatim (cached results still apply)
 
 UA <- "Mozilla/5.0 (compatible; au-solar-fleet-dashboard; R/httr2)"
+# AEMO's CDN answers 403 to obvious bots, so its requests look like a browser.
+# Some cloud hosts are blocked outright; the app then runs on GA alone or on a
+# committed copy of the workbook.
+AEMO_UA <- paste("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                 "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+aemo_req <- function(url, timeout = 120) {
+  request(url) |>
+    req_user_agent(AEMO_UA) |>
+    req_headers(Accept = "text/html,application/xhtml+xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*;q=0.8",
+                `Accept-Language` = "en-AU,en;q=0.9") |>
+    req_options(connecttimeout = CONNECT_TIMEOUT) |>
+    req_timeout(timeout) |>
+    req_error(is_error = \(r) FALSE)
+}
 
 AEMO_PAGE <- paste0("https://www.aemo.com.au/energy-systems/electricity/",
                     "national-electricity-market-nem/nem-forecasting-and-planning/",
@@ -191,7 +205,7 @@ is_offline <- function() isTRUE(getOption("au_pv.offline", FALSE))
 
 # The page lists the quarterly workbooks; take the newest NEM one
 find_aemo_xlsx <- function() {
-  resp <- http_get(AEMO_PAGE, timeout = 60)
+  resp <- req_perform(aemo_req(AEMO_PAGE, 60))
   if (resp_status(resp) != 200) stop("AEMO page returned HTTP ", resp_status(resp), call. = FALSE)
   html <- resp_body_string(resp)
   href <- regmatches(html, gregexpr("href=\"[^\"]+\\.xlsx[^\"]*\"", html, ignore.case = TRUE))[[1]]
@@ -216,9 +230,7 @@ get_aemo <- function() {
     res <- tryCatch({
       url <- find_aemo_xlsx()
       tmp <- tempfile(fileext = ".xlsx")
-      resp <- request(url) |> req_user_agent(UA) |>
-        req_options(connecttimeout = CONNECT_TIMEOUT) |> req_timeout(300) |>
-        req_error(is_error = \(r) FALSE) |> req_perform(path = tmp)
+      resp <- req_perform(aemo_req(url, 300) |> req_headers(Referer = AEMO_PAGE), path = tmp)
       if (resp_status(resp) != 200) stop("HTTP ", resp_status(resp), " for ", url, call. = FALSE)
       list(path = tmp, name = basename(sub("\\?.*$", "", url)), url = url, from = "download")
     }, error = function(e) { why <<- conditionMessage(e); NULL })
@@ -228,10 +240,12 @@ get_aemo <- function() {
     message("AEMO: using local ", basename(local), if (!is.null(why)) paste0(" (", why, ")"))
     return(list(path = local, name = basename(local), url = AEMO_PAGE, from = "local file"))
   }
-  stop("Could not get the AEMO NEM Generation Information workbook",
-       if (!is.null(why)) paste0(" (", why, ")"), ". Download the latest .xlsx from ",
-       AEMO_PAGE, " and save it next to app.R (keep 'generation information' in the name).",
-       call. = FALSE)
+  warning("AEMO NEM Generation Information not available",
+          if (!is.null(why)) paste0(" (", why, ")"),
+          ". Running on Geoscience Australia only. To add the AEMO pipeline, download the ",
+          "latest .xlsx from ", AEMO_PAGE, " and save it next to app.R ",
+          "(keep 'generation information' in the name).", call. = FALSE)
+  structure(list(path = NULL), why = why)
 }
 
 stage_from_aemo <- function(txt) {
@@ -427,10 +441,20 @@ geocode_missing <- function(a) {
 
 build_data <- function() {
   src <- get_aemo()
-  a <- read_aemo(src$path)
+  has_aemo <- !is.null(src$path)
 
   ga <- if (is_offline()) NULL else tryCatch(get_ga(), error = function(e) {
     warning("Geoscience Australia not available: ", conditionMessage(e), call. = FALSE); NULL })
+  if (!has_aemo && is.null(ga))
+    stop("Neither AEMO nor Geoscience Australia could be reached, and there is no cache. ",
+         "Save the AEMO NEM Generation Information .xlsx from ", AEMO_PAGE,
+         " next to app.R and restart.", call. = FALSE)
+
+  a <- if (has_aemo) read_aemo(src$path) else
+    tibble(plant = character(), state = character(), stage = factor(character(), STAGES),
+           region = character(), owner = character(), tech = character(),
+           status = character(), duid = character(), units = numeric(), mw = numeric(),
+           cod = as.Date(character()), lat = numeric(), lon = numeric(), source = character())
 
   # Coordinates: AEMO's own if valid, else GA match, else Nominatim
   a <- match_ga(a, ga)
@@ -445,9 +469,10 @@ build_data <- function() {
   a$lat[use_geo] <- a$geo_lat[use_geo]; a$lon[use_geo] <- a$geo_lon[use_geo]
   a$coord_src[use_geo] <- "OSM geocode (approx.)"
 
-  # WA and NT come from GA only (outside the NEM)
+  # WA and NT come from GA (outside the NEM); every state does when AEMO is missing
+  ga_states <- if (has_aemo) c("WA", "NT") else names(STATE_NAMES)
   extra <- if (!is.null(ga)) ga |>
-    filter(state %in% c("WA", "NT"), !is.na(mw), mw > 0, !is.na(lat)) |>
+    filter(state %in% ga_states, !is.na(mw), mw > 0, !is.na(lat)) |>
     mutate(stage = factor(case_when(
              grepl("^operational", tolower(status)) ~ "Operating",
              grepl("^proposed", tolower(status))    ~ "Proposed",
@@ -467,7 +492,10 @@ build_data <- function() {
            month = as.integer(format(cod, "%m")))
 
   list(version = CACHE_VERSION, gens = gens,
-       aemo_file = src$name, aemo_url = src$url, aemo_from = src$from,
+       has_aemo = has_aemo, aemo_why = attr(src, "why"),
+       aemo_file = if (has_aemo) src$name else NA_character_,
+       aemo_url = if (has_aemo) src$url else AEMO_PAGE,
+       aemo_from = if (has_aemo) src$from else "missing",
        ga_n = if (is.null(ga)) NA_integer_ else nrow(ga),
        ga_revised = if (is.null(ga)) NA else suppressWarnings(max(ga$revised, na.rm = TRUE)),
        coord_counts = table(factor(coalesce(gens$coord_src, "none"),
@@ -491,6 +519,10 @@ load_data <- function() {
     warning("Refresh failed, keeping cached data: ", conditionMessage(e), call. = FALSE)
     NULL
   })
+  if (!is.null(out) && !isTRUE(out$has_aemo) && isTRUE(cached$has_aemo)) {
+    warning("AEMO unavailable on refresh, keeping the cached build that has it", call. = FALSE)
+    out <- NULL
+  }
   if (is.null(out)) {
     Sys.setFileTime(CACHE_FILE, Sys.time())
     return(cached)
@@ -508,7 +540,8 @@ prep_data <- function(s) {
   list(
     raw          = s,
     G            = G,
-    period_label = sub("\\.xlsx$", "", s$aemo_file, ignore.case = TRUE),
+    period_label = if (isTRUE(s$has_aemo)) sub("\\.xlsx$", "", s$aemo_file, ignore.case = TRUE)
+                   else "GA only (AEMO unavailable)",
     yr_rng       = if (length(yrs)) range(yrs) else c(CY - 10, CY + 3),
     total_op     = sum(G$mw[G$stage == "Operating"]),
     site_max     = max(1, ceiling(max(G$mw))),
@@ -766,13 +799,22 @@ server <- function(input, output, session) {
   output$meta <- renderUI({
     s <- D()$raw; cc <- s$coord_counts
     div(class = "meta",
-        "NEM sites: AEMO, ",
-        a("NEM Generation Information", href = AEMO_PAGE, target = "_blank"),
-        " (", s$aemo_file, if (identical(s$aemo_from, "local file")) ", local copy", ").",
-        " Solar PV rows, rolled up to one bubble per site and stage. MW is AEMO's nameplate rating.",
-        " Pipeline sites with an expected date already past are shown in ", CY, ".",
-        br(), br(),
-        "WA and NT sites, and coordinates for NEM sites: ",
+        if (isTRUE(s$has_aemo)) tagList(
+          "NEM sites: AEMO, ",
+          a("NEM Generation Information", href = AEMO_PAGE, target = "_blank"),
+          " (", s$aemo_file, if (identical(s$aemo_from, "local file")) ", local copy", ").",
+          " Solar PV rows, rolled up to one bubble per site and stage. MW is AEMO's nameplate rating.",
+          " Pipeline sites with an expected date already past are shown in ", CY, ".",
+          br(), br(),
+          "WA and NT sites, and coordinates for NEM sites: ")
+        else tagList(
+          tags$b("AEMO's workbook could not be loaded"),
+          if (!is.null(s$aemo_why)) paste0(" (", s$aemo_why, ")"),
+          ", so every state comes from Geoscience Australia: operating and proposed sites only, ",
+          "no commissioning dates or committed pipeline. Save the ",
+          a("NEM Generation Information", href = AEMO_PAGE, target = "_blank"),
+          " .xlsx next to app.R to add AEMO's pipeline.",
+          br(), br(), "Sites: "),
         a("Geoscience Australia", href = GA_PAGE, target = "_blank"),
         ", Major Power Stations (CC BY 4.0)",
         if (!is.na(s$ga_n)) sprintf(", %s solar points", s$ga_n),
