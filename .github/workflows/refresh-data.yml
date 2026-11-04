@@ -45,4 +45,5 @@ jobs:
           git add -A
           git diff --cached --quiet && { echo "No changes"; exit 0; }
           git commit -m "Refresh data snapshots"
+          git pull --rebase origin ${{ github.ref_name }}
           git push origin HEAD:${{ github.ref_name }}

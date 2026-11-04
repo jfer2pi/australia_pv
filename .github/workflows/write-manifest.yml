@@ -45,4 +45,5 @@ jobs:
           git add manifest.json
           git diff --cached --quiet && { echo "manifest.json unchanged"; exit 0; }
           git commit -m "Update manifest.json"
+          git pull --rebase origin ${{ github.ref_name }}
           git push origin HEAD:${{ github.ref_name }}

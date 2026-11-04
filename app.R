@@ -361,30 +361,78 @@ state_from_text <- function(x) {
   out
 }
 
-# Query one ArcGIS layer for solar features, paging through the results
+# One request to an ArcGIS layer's /query, with the server's message on failure
+ga_get <- function(url, q) {
+  resp <- http_get(paste0(url, "/query"), q, timeout = 120)
+  if (resp_status(resp) != 200)
+    stop("HTTP ", resp_status(resp), ": ",
+         substr(gsub("\\s+", " ", tryCatch(resp_body_string(resp), error = \(e) "")), 1, 120),
+         call. = FALSE)
+  j <- resp_body_json(resp, simplifyVector = FALSE)
+  if (!is.null(j$error))
+    stop("query error: ", j$error$message,
+         if (length(j$error$details)) paste0(" (", paste(unlist(j$error$details), collapse = " "), ")"),
+         call. = FALSE)
+  j
+}
+
+# Solar features from one layer. Older services reject LIKE or paging, so fall
+# back to fetching every station in one go and filtering here.
 ga_query <- function(url) {
-  feats <- list(); off <- 0
-  repeat {
-    resp <- http_get(paste0(url, "/query"), list(
-      where = "primaryfueltype LIKE '%olar%'", outFields = "*",
-      returnGeometry = "true", outSR = 4326, f = "json",
-      resultOffset = off, resultRecordCount = 1000), timeout = 120)
-    if (resp_status(resp) != 200) stop("HTTP ", resp_status(resp), call. = FALSE)
-    j <- resp_body_json(resp, simplifyVector = FALSE)
-    if (!is.null(j$error)) stop("query error: ", j$error$message, call. = FALSE)
-    if (!length(j$features)) break
-    feats <- c(feats, j$features)
-    if (!isTRUE(j$exceededTransferLimit)) break
-    off <- off + length(j$features)
+  base <- list(outFields = "*", returnGeometry = "true", outSR = 4326, f = "json")
+  attempts <- list(
+    list(where = "primaryfueltype LIKE '%olar%'", page = TRUE),
+    list(where = "1=1", page = TRUE),
+    list(where = "1=1", page = FALSE))
+  feats <- NULL; errs <- character()
+  for (at in attempts) {
+    feats <- tryCatch({
+      out <- list(); off <- 0
+      repeat {
+        q <- c(base, list(where = at$where))
+        if (at$page) q <- c(q, list(resultOffset = off, resultRecordCount = 1000))
+        j <- ga_get(url, q)
+        out <- c(out, j$features)
+        if (!at$page || !length(j$features) || !isTRUE(j$exceededTransferLimit)) break
+        off <- off + length(j$features)
+      }
+      out
+    }, error = function(e) { errs <<- c(errs, conditionMessage(e)); NULL })
+    if (length(feats)) break
   }
-  if (!length(feats)) stop("no solar features", call. = FALSE)
+  if (!length(feats)) stop(paste(unique(errs), collapse = " | "), call. = FALSE)
   attrs <- bind_rows(lapply(feats, \(f) {
     v <- lapply(f$attributes, \(x) if (is.null(x)) NA_character_ else as.character(x))
     names(v) <- tolower(names(v)); as_tibble(v)
   }))
   attrs$lon_ <- vapply(feats, \(f) if (is.null(f$geometry$x)) NA_real_ else f$geometry$x, 0)
   attrs$lat_ <- vapply(feats, \(f) if (is.null(f$geometry$y)) NA_real_ else f$geometry$y, 0)
+  fuel <- tolower(paste(pickr(attrs, "^primaryfueltype$"), pickr(attrs, "^primarysubfueltype$"),
+                        pickr(attrs, "^generationtype$"), pickr(attrs, "^class$")))
+  attrs <- attrs[grepl("solar|photovolt", fuel), ]
+  if (!nrow(attrs)) stop("no solar features", call. = FALSE)
   attrs
+}
+
+# Find power-station layers in GA's service catalogue, in case they move again
+ga_discover <- function() {
+  cat <- tryCatch(resp_body_json(http_get(GA_BASE, list(f = "json"), 60)), error = \(e) NULL)
+  if (is.null(cat)) return(character())
+  svc <- vapply(cat$services, \(x) paste0(x$name, "/", x$type), "")
+  for (fo in unlist(cat$folders)) {
+    sub <- tryCatch(resp_body_json(http_get(paste0(GA_BASE, fo), list(f = "json"), 60)),
+                    error = \(e) NULL)
+    if (!is.null(sub)) svc <- c(svc, vapply(sub$services, \(x) paste0(x$name, "/", x$type), ""))
+  }
+  svc <- svc[grepl("electric", svc, ignore.case = TRUE) & grepl("MapServer|FeatureServer", svc)]
+  out <- character()
+  for (sv in svc) {
+    info <- tryCatch(resp_body_json(http_get(paste0(GA_BASE, sv), list(f = "json"), 60)),
+                     error = \(e) NULL)
+    for (ly in info$layers) if (grepl("power.?station", ly$name, ignore.case = TRUE))
+      out <- c(out, sprintf("%s%s/%s", GA_BASE, sv, ly$id))
+  }
+  unique(out)
 }
 
 # Same columns whichever GA layer answered
@@ -412,11 +460,16 @@ ga_standardise <- function(d) {
 
 get_ga <- function() {
   why <- character()
-  if (!is_offline()) for (u in GA_ENDPOINTS) {
+  urls <- GA_ENDPOINTS
+  tried <- 0
+  while (!is_offline() && tried < length(urls)) {
+    tried <- tried + 1; u <- urls[tried]
     g <- tryCatch(ga_standardise(ga_query(u)), error = function(e) {
       why <<- c(why, sprintf("%s: %s", sub(GA_BASE, "", u, fixed = TRUE), conditionMessage(e)))
       NULL })
     if (!is.null(g) && nrow(g)) return(structure(g, from = u))
+    # Fixed addresses all failed: look the layer up in GA's catalogue once
+    if (tried == length(GA_ENDPOINTS)) urls <- unique(c(urls, ga_discover()))
   }
   if (file.exists(GA_LOCAL)) {
     message("GA: using local ", GA_LOCAL, if (length(why)) paste0(" (", paste(why, collapse = "; "), ")"))
