@@ -411,8 +411,9 @@ ga_query <- function(url) {
   }))
   attrs$lon_ <- vapply(feats, \(f) if (is.null(f$geometry$x)) NA_real_ else f$geometry$x, 0)
   attrs$lat_ <- vapply(feats, \(f) if (is.null(f$geometry$y)) NA_real_ else f$geometry$y, 0)
-  fuel <- tolower(paste(pickr(attrs, "^primaryfueltype$"), pickr(attrs, "^primarysubfueltype$"),
-                        pickr(attrs, "^generationtype$"), pickr(attrs, "^class$")))
+  fuel <- tolower(paste(pickr(attrs, "^primaryfueltype$", "^primary_fuel_type$"),
+                        pickr(attrs, "^primarysubfueltype$"),
+                        pickr(attrs, "^generationtype$", "^technology_type$")))
   attrs <- attrs[grepl("solar|photovolt", fuel), ]
   if (!nrow(attrs)) stop("no solar features", call. = FALSE)
   attrs
@@ -441,22 +442,30 @@ ga_discover <- function() {
 
 # Same columns whichever GA layer answered
 ga_standardise <- function(d) {
-  epoch <- function(x) { n <- num(x)
-    as.Date(as.POSIXct(n / 1000, origin = "1970-01-01", tz = "UTC")) }
+  # Dates arrive as epoch milliseconds (REST) or "2026/01/30 00:00:00+00" (CSV)
+  gdate <- function(x) {
+    x <- as.character(x); out <- as.Date(rep(NA_character_, length(x)))
+    ep <- grepl("^[0-9]{10,13}$", x)
+    out[ep] <- as.Date(as.POSIXct(as.numeric(x[ep]) / 1000, origin = "1970-01-01", tz = "UTC"))
+    st <- !ep & grepl("^[0-9]{4}[/-][0-9]{2}[/-][0-9]{2}", x)
+    out[st] <- as.Date(gsub("/", "-", substr(x[st], 1, 10)))
+    out
+  }
   st <- state_code(pickr(d, "^state$"))
   st <- coalesce(st, state_from_text(paste(pickr(d, "^address$"), pickr(d, "^locality$"))))
   st <- coalesce(st, state_from_xy(d$lat_, d$lon_))
   tibble(
-    plant   = pickr(d, "^name$", "powerstation_name"),
-    status  = pickr(d, "^operationalstatus$", "^operational_status$"),
+    plant   = pickr(d, "^name$", "powerstation_name", "^feature_name$"),
+    status  = pickr(d, "^operationalstatus$", "^operational_status$", "^status$"),
     owner   = coalesce(na_if(pickr(d, "^owner$"), ""), pickr(d, "^operator$")),
-    gentype = pickr(d, "^generationtype$", "^structuretype$"),
-    subfuel = pickr(d, "^primarysubfueltype$"),
-    mw      = num(pickr(d, "^generationmw$")),
+    gentype = pickr(d, "^generationtype$", "^technology_type$", "^structuretype$"),
+    subfuel = pickr(d, "^primarysubfueltype$", "^primary_fuel_type_descriptor$"),
+    mw      = num(pickr(d, "^generationmw$", "^generation_capacity_mw$")),
     locality = pickr(d, "^locality$", "^address$"),
     state   = st,
-    confidence = num(pickr(d, "^spatialconfidence$")),
-    revised = epoch(pickr(d, "^revised$", "^attribute_date$", "^feature_date$")),
+    confidence = num(pickr(d, "^spatialconfidence$", "^spatial_confidence$")),
+    revised = gdate(pickr(d, "^revised$", "^attribute_source_date$", "^attribute_date$",
+                          "^last_edited_on$", "^feature_date$")),
     lon = d$lon_, lat = d$lat_
   ) |>
     filter(!grepl("thermal|concentrat", tolower(paste(gentype, subfuel))))
@@ -488,9 +497,10 @@ get_ga <- function() {
     message("GA: using local ", f)
     d <- read.csv(f, colClasses = "character", encoding = "UTF-8", check.names = FALSE)
     names(d) <- tolower(clean_names(names(d)))
-    d$lon_ <- num(pickr(d, "^x_coordinate$", "^x$", "^longitude$", "^lon"))
-    d$lat_ <- num(pickr(d, "^y_coordinate$", "^y$", "^latitude$", "^lat"))
-    fuel <- tolower(paste(pickr(d, "^primaryfueltype$"), pickr(d, "^primarysubfueltype$")))
+    d$lon_ <- num(pickr(d, "^longitude$", "^x_coordinate$", "^x$", "^lon"))
+    d$lat_ <- num(pickr(d, "^latitude$", "^y_coordinate$", "^y$", "^lat"))
+    fuel <- tolower(paste(pickr(d, "^primaryfueltype$", "^primary_fuel_type$"),
+                          pickr(d, "^primarysubfueltype$"), pickr(d, "^technology_type$")))
     g <- ga_standardise(as_tibble(d[grepl("solar|photovolt", fuel), ]))
     if (nrow(g)) return(structure(g, from = f))
   }
@@ -596,8 +606,9 @@ build_data <- function() {
   extra <- if (!is.null(ga)) ga |>
     filter(state %in% ga_states, !is.na(mw), mw > 0, !is.na(lat)) |>
     mutate(stage = factor(case_when(
-             grepl("^operational", tolower(status)) ~ "Operating",
-             grepl("^proposed", tolower(status))    ~ "Proposed",
+             grepl("^operational", tolower(status))       ~ "Operating",
+             grepl("under construction", tolower(status)) ~ "Committed",
+             grepl("^proposed", tolower(status))          ~ "Proposed",
              TRUE ~ NA_character_), levels = STAGES)) |>
     filter(!is.na(stage)) |>
     transmute(plant, state, stage, region = state, owner = coalesce(na_if(owner, ""), "Unknown"),

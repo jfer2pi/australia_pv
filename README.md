@@ -34,6 +34,8 @@ The *Refresh data* GitHub Action tries to write those snapshots on the 3rd of ev
 
 If no data at all can be loaded, the app shows a page explaining this instead of failing to start.
 
+`Major_Power_Stations.csv` in this repo is GA's November 2026 export (430 stations, 64 of them solar, attributes sourced from AEMO in January 2026). It uses GA's newer column layout (`feature_name`, `status`, `generation_capacity_mw`, `latitude`, `longitude`), which the app reads alongside the older REST field names. Note that AEMO's page also lists a "Generating Unit Expected Closure Year" workbook: that one only holds retirement years and is not the file the app needs.
+
 **Caching.** The parsed result is cached to `au_solar.rds` for 24 h; the sidebar button rebuilds it. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
 
 ## How it was built
