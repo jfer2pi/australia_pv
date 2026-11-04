@@ -2721,6 +2721,9 @@
     "app.R": {
       "checksum": "9374d5102140eab6e6094885ed0fbb6e"
     },
+    "au_geocode_cache.csv": {
+      "checksum": "ea28dd890dcbe8d3bf576dd963293c82"
+    },
     "ga_solar_stations.csv": {
       "checksum": "e2924ece4dd575cd11cc2cf9e3bbbabb"
     },
