@@ -1,0 +1,65 @@
+"plant","status","owner","gentype","subfuel","mw","locality","state","confidence","revised","lon","lat"
+"Mugga Lane Solar Park","Operational","Maoneng Australia","Solar Photovoltaic",NA,13,"ACT REMAINDER - TUGGERANONG","ACT",5,"2016-11-21",149.14599886,-35.3988933861087
+"Royalla Solar Farm","Operational","Abdul Latif Jameel Energy And Environment Services","Solar Photovoltaic",NA,20,"ACT REMAINDER - TUGGERANONG","ACT",5,"2012-07-31",149.143479695,-35.4896707741078
+"Avonlie","Operational",NA,"Solar Photovoltaic",NA,245,"SANDIGO","NSW",5,"2024-07-20",146.609764304,-34.915367022114
+"Beryl Solar Farm","Operational",NA,"Solar Photovoltaic",NA,111,"GULGONG","NSW",5,NA,149.460997696,-32.3483801611466
+"Broken Hill Solar Plant","Operational","Agl Energy","Solar Photovoltaic",NA,53,"BROKEN HILL","NSW",5,"2012-07-31",141.391552534,-31.9866940081518
+"Coleambally Solar Farm","Operational",NA,"Solar Photovoltaic",NA,NA,"COLEAMBALLY","NSW",3,NA,145.953402698,-34.743425657116
+"Crudine Ridge Wind Farm","Operational","Crwf Nominees Pty Ltd As Trustee Of The Crwf Trust","Solar Photovoltaic",NA,138,"PYRAMUL","NSW",5,"2026-01-30",149.678146033,-32.9102331281389
+"Finley Solar Farm","Operational",NA,"Solar Photovoltaic",NA,162.4,"FINLEY","NSW",5,"2024-07-20",145.51231276,-35.6397239271062
+"Griffith Solar Farm","Operational","Neoen","Solar Photovoltaic",NA,36,"YOOGALI","NSW",5,NA,146.109421126,-34.315518895121
+"Gunnedah Solar Farm","Operational",NA,"Solar Photovoltaic",NA,110,"ORANGE GROVE","NSW",5,"2024-07-20",150.343178108,-30.9512123831672
+"Limondale Solar Farm","Operational",NA,"Solar Photovoltaic",NA,313,"BALRANALD","NSW",5,"2024-08-08",143.514363046,-34.7715693731157
+"Manildra Solar Farm","Operational","First Solar Australia","Solar Photovoltaic",NA,46,"MANILDRA","NSW",5,NA,148.718038863,-33.1732686361354
+"Metz Solar Farm","Operational",NA,"Solar Photovoltaic",NA,115,"METZ","NSW",5,"2022-04-20",151.848871558,-30.519269719174
+"Moree","Operational","Frv-Fotowatio Renewable Ventures","Solar Photovoltaic",NA,60,"MOREE","NSW",3,"2012-07-31",149.860742161,-29.5723914441895
+"Nevertire Solar Farm","Operational",NA,"Solar Photovoltaic",NA,105,"NEVERTIRE","NSW",5,"2023-01-11",147.70999844,-31.8250951281541
+"New England Solar Farm","Operational",NA,"Solar Photovoltaic",NA,NA,"URALLA","NSW",5,"2024-06-17",151.61779211,-30.6254262671723
+"Nyngan Solar Plant","Operational","Agl Energy","Solar Photovoltaic",NA,102,"NYNGAN","NSW",5,"2012-07-31",147.085358228,-31.5527273091581
+"Parkes Solar Farm","Operational","Neoen","Solar Photovoltaic",NA,66,"PARKES","NSW",5,NA,148.074995897,-33.1027211131363
+"Sunraysia Solar Farm","Operational",NA,"Solar Photovoltaic",NA,200,"BALRANALD","NSW",5,"2024-07-20",143.512284245,-34.7934435511154
+"Suntop Solar Farm","Operational",NA,"Solar Photovoltaic",NA,150,"SUNTOP","NSW",5,"2024-07-23",148.821451983,-32.5792749701434
+"Walla Walla Solar Farm","Operational","Frv Australia (Walla Walla Asset Co Pty Ltd As Trustee For The Walla Walla Asset Trust)","Solar Photovoltaic",NA,300,"WALLA WALLA","NSW",5,"2026-01-30",146.945937245,-35.7386962401051
+"West Wyalong Solar Farm","Operational",NA,"Solar Photovoltaic",NA,107,"WYALONG","NSW",5,"2024-07-20",147.336457636,-33.8094383821272
+"Wollar Solar Farm","Operational","Wollar Solar Development Pty Ltd","Solar Photovoltaic",NA,280,"WOLLAR","NSW",5,"2026-01-30",149.942549768,-32.4083887691458
+"Bluegrass Solar Farm","Operational","X-Elio Australia Pty Ltd","Solar Photovoltaic",NA,148,"CAMEBY","QLD",5,"2026-01-30",150.503221894,-26.6921702942421
+"Childers Solar Farm","Operational","Elliot Green Power","Solar Photovoltaic",NA,NA,"ISIS RIVER","QLD",1,NA,152.405042732,-25.2927528942705
+"Clare Solar Farm","Operational","Frv-Fotowatio Renewable Ventures","Solar Photovoltaic",NA,130,"CLARE","QLD",5,NA,147.21054941,-19.8397572573969
+"Clermont Solar Farm","Operational",NA,"Solar Photovoltaic",NA,100,"CLERMONT","QLD",4,NA,147.585530484,-22.8446308513242
+"Collinsville Solar Farm","Operational","Ratch Australia Corporation Limited","Solar Photovoltaic",NA,42,"COLLINSVILLE","QLD",5,NA,147.807446019,-20.5410665533793
+"Columboola Solar Farm","Operational",NA,"Solar Photovoltaic",NA,162,"HOOKSWOOD","QLD",5,"2023-02-26",150.282362097,-26.6358793232432
+"Darling Downs Solar Farm","Operational","Apa Group","Solar Photovoltaic",NA,110,"KOGAN","QLD",5,NA,150.893916616,-27.1206059942338
+"Daydream Solar Farm","Operational","Edify Energy","Solar Photovoltaic",NA,50,"SPRINGLANDS","QLD",5,NA,147.770952071,-20.4935982383805
+"Edenvale Solar Farm","Operational",NA,"Solar Photovoltaic",NA,204,"CROSSROADS","QLD",5,"2023-12-03",150.582149822,-26.9314034132374
+"Emerald Solar Farm","Operational","Lighthouse Solar Fund","Solar Photovoltaic",NA,68,"EMERALD","QLD",5,NA,148.134721784,-23.5083517723091
+"Gangarri Solar Farm","Operational","Shell New Energies Australia Pty Ltd","Solar Photovoltaic",NA,120,"WOLEEBEE","QLD",5,"2026-01-30",149.764367094,-26.2690968162505
+"Hamilton Solar Farm","Operational","Edify Energy","Solar Photovoltaic",NA,69,"SPRINGLANDS","QLD",5,NA,147.767086885,-20.5048062943803
+"Haughton River Solar Farm","Operational","Spic","Solar Photovoltaic",NA,500,"UPPER HAUGHTON","QLD",1,NA,147.048973712,-19.7425746813994
+"Hayman Solar Farm","Operational","Edify Energy Blackrock","Solar Photovoltaic",NA,180,"SPRINGLANDS","QLD",5,NA,147.762589574,-20.4872672803807
+"Lilydale Solar Farm","Operational","Frv Fotowatio Renewable Ventures","Solar Photovoltaic",NA,100,"LILYVALE","QLD",5,NA,148.439007809,-23.0874598523186
+"Moura Solar Farm","Operational",NA,"Solar Photovoltaic",NA,110,"BANANA","QLD",5,"2024-07-23",150.077252204,-24.5103577272871
+"Ross River Solar Farm","Operational","Ross River Operations Pty Ltd As The Trustee For The Ross River Operations Trust","Solar Photovoltaic",NA,116,"PINNACLES","QLD",5,"2026-01-30",146.720628142,-19.4128101014078
+"Rugby Run Solar Farm","Operational","Adani Renewables","Solar Photovoltaic",NA,65,"MORANBAH","QLD",5,NA,147.918772405,-22.1404561763406
+"Sun Metals Solar Farm","Operational","Sun Metals Corporation Pty","Solar Photovoltaic",NA,124,"STUART","QLD",5,"2018-05-01",146.888504028,-19.3354429484098
+"Susan River Solar Farm","Operational",NA,"Solar Photovoltaic",NA,95,"SUSAN RIVER","QLD",5,NA,152.74429816,-25.4226482492678
+"Wandoan South Solar","Operational",NA,"Solar Photovoltaic",NA,NA,"WOLEEBEE","QLD",5,"2023-02-26",149.766722824,-26.2615876182506
+"Western Downs","Operational",NA,"Solar Photovoltaic",NA,400,"HOPELAND","QLD",5,"2024-06-02",150.693641442,-26.9521677402371
+"Whitsunday Solar Farm","Operational","Edify Energy","Solar Photovoltaic",NA,69,"SPRINGLANDS","QLD",5,NA,147.748070235,-20.4948696633805
+"Bungala Solar Farm","Operational",NA,"Solar Photovoltaic",NA,220,"YARRAH","SA",5,"2023-09-18",137.847494163,-32.4145373141457
+"Tailem Bend Solar Farm","Operational","Vena Energy","Solar Photovoltaic",NA,95,"TAILEM BEND","SA",5,NA,139.488300153,-35.2703468311101
+"Wilpena Solar Farm","Operational","Agl","Solar Photovoltaic",NA,145,"WILLOW SPRINGS","SA",4,NA,138.619764395,-31.5233789341586
+"King Island (Currie)","Operational","Hydro Tasmania","Turbine - Wind/solar Photovoltaic",NA,8.6,"NUGARA","TAS",5,"2026-01-23",143.891970494,-39.9387720020711
+"Bannerton Solar Farm","Operational","Foresight Solar Australia","Solar Photovoltaic",NA,88,"BANNERTON","VIC",4,NA,142.778647965,-34.6870877571167
+"Gannawarra Solar Farm","Operational","Gannawarra Solar Farm Pty Ltd","Solar Photovoltaic",NA,50,"WANDELLA","VIC",5,"2026-01-30",143.780391,-35.7331662211052
+"Glenrowan West Solar Farm","Operational","Glenrowan Sun Farm Pty Ltd","Solar Photovoltaic",NA,110,"GLENROWAN WEST","VIC",5,"2026-01-30",146.139769412,-36.4986447430975
+"Karadoc Solar Farm","Operational","Baywa","Solar Photovoltaic",NA,112,"IRAAK","VIC",4,NA,142.252098907,-34.4154064941198
+"Kiamal Solar Farm","Operational",NA,"Solar Photovoltaic",NA,200,"OUYEN","VIC",5,"2024-07-24",142.294238426,-35.0296960721128
+"Mokoan Solar Farm","Operational","Ee Solar 6 Pty Ltd As Trustee For Ee Solar 6 Trust","Solar Photovoltaic",NA,46,"WINTON","VIC",5,"2026-01-30",146.130792624,-36.4903387310976
+"Numurkah Solar Farm","Operational","Neoen","Solar Photovoltaic",NA,100,"DRUMANURE","VIC",1,NA,145.474558044,-36.1592353191008
+"Wemen Solar Farm","Operational","Cefc","Solar Photovoltaic",NA,110,"LIPAROO","VIC",5,NA,142.541364443,-34.7881809691155
+"Winton Solar Farm","Operational",NA,"Solar Photovoltaic",NA,106,"WINTON","VIC",5,"2023-10-18",146.131165493,-36.4962190680975
+"Yetpool Solar Farm","Operational",NA,"Solar Photovoltaic",NA,NA,"CARWARP","VIC",5,"2023-08-24",142.184598757,-34.3943430501201
+"Chichester Solar Farm","Operational","Apa Group","Solar Photovoltaic",NA,60,"NEWMAN","WA",5,"2026-03-27",119.74330135,-22.4134429303342
+"Greenough River Solar Farm","Operational","Verve Energy/ge Energy Financial Services Jv","Solar Photovoltaic",NA,10,"ELLENDALE","WA",5,"2014-01-08",115.11194806,-28.904304697201
+"Merredin Solar Farm","Operational","Sun Energy","Solar Photovoltaic",NA,100,"MERREDIN","WA",5,"2026-03-27",118.229521837,-31.5413399391583
+"Port Hedland Solar Farm","Operational","Apa Group","Solar Photovoltaic",NA,45,"BOODARIE","WA",5,"2026-03-27",118.557781795,-20.435199564382
