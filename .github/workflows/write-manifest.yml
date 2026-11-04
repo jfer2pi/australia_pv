@@ -18,8 +18,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: write-manifest
-  cancel-in-progress: true
+  group: repo-writes
+  cancel-in-progress: false
 
 jobs:
   manifest:

@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: refresh-data
+  group: repo-writes
   cancel-in-progress: false
 
 jobs:
@@ -33,6 +33,15 @@ jobs:
 
       - name: Refresh snapshots
         run: Rscript scripts/refresh_data.R
+
+      - name: Catch up with main
+        run: |
+          rm -f refresh_changed.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
+          git pull --rebase origin ${{ github.ref_name }}
+          git stash pop || true
 
       - name: Write manifest.json
         run: |

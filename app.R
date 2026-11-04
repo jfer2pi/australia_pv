@@ -53,7 +53,7 @@ library(htmltools)
 
 CACHE_FILE      <- "au_solar.rds"
 CACHE_TTL       <- 24 * 3600
-CACHE_VERSION   <- 1L   # bump when the cached structure changes
+CACHE_VERSION   <- 2L   # bump when the cached structure changes
 CONNECT_TIMEOUT <- 20   # seconds before giving up on a host
 GEOCODE_FILE    <- "au_geocode_cache.csv"
 GEOCODE_MAX     <- 600  # most new lookups per build (about 10 min at 1/s)
@@ -543,6 +543,30 @@ read_geocache <- function() {
   as_tibble(g)
 }
 
+# Nominatim asks for an identifying User-Agent (no email needed)
+NOMINATIM_UA <- "au-solar-fleet-dashboard/1.0 (+https://github.com/jfer2pi/australia_pv)"
+
+nominatim <- function(q, state) {
+  Sys.sleep(1.1)
+  r <- tryCatch(request(NOMINATIM_URL) |>
+                  req_url_query(q = q, format = "jsonv2", limit = 5, countrycodes = "au") |>
+                  req_user_agent(NOMINATIM_UA) |>
+                  req_options(connecttimeout = CONNECT_TIMEOUT) |> req_timeout(30) |>
+                  req_error(is_error = \(r) FALSE) |> req_perform(),
+                error = \(e) NULL)
+  if (is.null(r)) return(list(status = "error"))
+  if (resp_status(r) != 200) return(list(status = paste0("HTTP ", resp_status(r))))
+  h <- tryCatch(as.data.frame(resp_body_json(r, simplifyVector = TRUE)), error = \(e) NULL)
+  if (is.null(h) || !nrow(h)) return(list(status = "no match"))
+  la <- as.numeric(h$lat); lo <- as.numeric(h$lon)
+  ok <- in_state(la, lo, rep(state, length(la)))
+  if (!any(ok)) return(list(status = "outside state"))
+  j <- which(ok)[1]
+  list(status = "ok", lat = la[j], lon = lo[j], label = substr(h$display_name[j], 1, 160))
+}
+
+# Site name first; then the place words in it ("Moree Solar Farm" -> "Moree"),
+# which puts the site at its town. Only real answers are cached, never errors.
 geocode_missing <- function(a) {
   cache <- read_geocache()
   a$geo_key <- paste(norm_txt(a$plant), a$state, sep = "|")
@@ -550,26 +574,30 @@ geocode_missing <- function(a) {
   allow <- !is_offline() && !isFALSE(getOption("au_pv.geocode", TRUE))
   if (allow && length(need)) {
     need <- head(need, GEOCODE_MAX)
-    message("Geocoding ", length(need), " sites with Nominatim (1 per second)...")
+    message("Geocoding ", length(need), " sites with Nominatim (about 1 per second)...")
+    tally <- character()
     new <- lapply(need, function(k) {
-      i <- match(k, a$geo_key)
+      i <- match(k, a$geo_key); st <- a$state[i]
+      region <- sprintf("%s, Australia", STATE_NAMES[[st]])
       core <- paste(setdiff(strsplit(norm_txt(a$plant[i]), " ")[[1]], c("pty", "ltd")), collapse = " ")
-      q <- sprintf("%s, %s, Australia", core, STATE_NAMES[[a$state[i]]])
-      Sys.sleep(1.05)
-      hit <- tryCatch({
-        r <- http_get(NOMINATIM_URL, list(q = q, format = "jsonv2", limit = 3,
-                                          countrycodes = "au"), timeout = 30)
-        if (resp_status(r) == 200) resp_body_json(r, simplifyVector = TRUE) else NULL
-      }, error = \(e) NULL)
-      if (is.null(hit) || !length(hit) || !nrow(as.data.frame(hit)))
-        return(tibble(key = k, lat = NA_real_, lon = NA_real_, label = "no match"))
-      h <- as.data.frame(hit)
-      la <- as.numeric(h$lat); lo <- as.numeric(h$lon)
-      ok <- in_state(la, lo, rep(a$state[i], length(la)))
-      if (!any(ok)) return(tibble(key = k, lat = NA_real_, lon = NA_real_, label = "outside state"))
-      j <- which(ok)[1]
-      tibble(key = k, lat = la[j], lon = lo[j], label = substr(h$display_name[j], 1, 160))
+      res <- nominatim(sprintf("%s, %s", core, region), st); how <- "site"
+      if (res$status %in% c("no match", "outside state")) {
+        place <- paste(toks(a$plant[i])[[1]], collapse = " ")
+        place <- gsub("\\b(bess|battery|storage|wind|kci|north|south|east|west|expansion)\\b", "", place)
+        place <- trimws(gsub("\\s+", " ", place))
+        if (nzchar(place) && place != core) {
+          res <- nominatim(sprintf("%s, %s", place, region), st); how <- "town"
+        }
+      }
+      tally <<- c(tally, if (res$status == "ok") paste("ok", how) else res$status)
+      if (res$status == "ok")
+        return(tibble(key = k, lat = res$lat, lon = res$lon,
+                      label = paste0(if (how == "town") "near: ", res$label)))
+      if (res$status %in% c("no match", "outside state"))
+        return(tibble(key = k, lat = NA_real_, lon = NA_real_, label = res$status))
+      NULL   # HTTP error or timeout: try again next build
     })
+    message("Nominatim results: ", paste(names(table(tally)), table(tally), sep = " = ", collapse = ", "))
     cache <- bind_rows(cache, bind_rows(new)) |> distinct(key, .keep_all = TRUE)
     tryCatch(write.csv(cache, GEOCODE_FILE, row.names = FALSE, fileEncoding = "UTF-8"),
              error = \(e) warning("Could not save ", GEOCODE_FILE, call. = FALSE))
@@ -608,7 +636,8 @@ build_data <- function() {
   a <- geocode_missing(a)
   use_geo <- is.na(a$lat) & !is.na(a$geo_lat)
   a$lat[use_geo] <- a$geo_lat[use_geo]; a$lon[use_geo] <- a$geo_lon[use_geo]
-  a$coord_src[use_geo] <- "OSM geocode (approx.)"
+  a$coord_src[use_geo] <- ifelse(grepl("^near: ", a$geo_label[use_geo]),
+                                 "OSM town (approx.)", "OSM geocode (approx.)")
 
   # WA and NT come from GA (outside the NEM); every state does when AEMO is missing
   ga_states <- if (has_aemo) c("WA", "NT") else names(STATE_NAMES)
@@ -642,7 +671,8 @@ build_data <- function() {
        ga_from = if (is.null(ga)) NA_character_ else attr(ga, "from"),
        ga_revised = if (is.null(ga)) NA else suppressWarnings(max(ga$revised, na.rm = TRUE)),
        coord_counts = table(factor(coalesce(gens$coord_src, "none"),
-                                   c("AEMO", "Geoscience Australia", "OSM geocode (approx.)", "none"))),
+                                   c("AEMO", "Geoscience Australia", "OSM geocode (approx.)",
+                                     "OSM town (approx.)", "none"))),
        fetched = Sys.time())
 }
 
@@ -989,8 +1019,9 @@ server <- function(input, output, session) {
         if (!is.na(s$ga_revised) && is.finite(s$ga_revised))
           sprintf(", revised up to %s", format(s$ga_revised, "%b %Y")), ".",
         br(), br(),
-        sprintf("Locations: %d from AEMO, %d from GA name matches, %d geocoded with OpenStreetMap (approximate), %d not mapped.",
-                cc[["AEMO"]], cc[["Geoscience Australia"]], cc[["OSM geocode (approx.)"]], cc[["none"]]),
+        sprintf("Locations: %d from AEMO, %d from GA name matches, %d geocoded by site name and %d placed at the town in their name with OpenStreetMap (approximate), %d not mapped.",
+                cc[["AEMO"]], cc[["Geoscience Australia"]], cc[["OSM geocode (approx.)"]],
+                cc[["OSM town (approx.)"]], cc[["none"]]),
         br(), br(),
         "Map data and geocoding © ",
         a("OpenStreetMap", href = "https://www.openstreetmap.org/copyright", target = "_blank"),
