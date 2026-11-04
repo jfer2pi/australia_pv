@@ -152,7 +152,7 @@ date_au <- function(x) {
   ser <- grepl("^[0-9]{5}(\\.[0-9]+)?$", x)
   out[ser] <- as.Date(floor(as.numeric(x[ser])), origin = "1899-12-30")
   iso <- is.na(out) & grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}", x)
-  out[iso] <- as.Date(substr(x[iso], 1, 10))
+  out[iso] <- as.Date(substr(x[iso], 1, 10), format = "%Y-%m-%d")
   dmy <- is.na(out) & grepl("^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}", x)
   out[dmy] <- as.Date(sub("^([0-9]{1,2}/[0-9]{1,2}/[0-9]{4}).*$", "\\1", x[dmy]), "%d/%m/%Y")
   my <- is.na(out) & grepl("^[A-Za-z]{3}[a-z]*[- ]+[0-9]{2,4}$", x)
@@ -160,16 +160,16 @@ date_au <- function(x) {
     mo <- match(tolower(substr(x[my], 1, 3)), tolower(month.abb))
     yr <- as.integer(sub("^.*[- ]+([0-9]{2,4})$", "\\1", x[my]))
     yr <- ifelse(yr < 100, 2000 + yr, yr)
-    out[my] <- as.Date(ifelse(is.na(mo), NA, sprintf("%d-%02d-01", yr, mo)))
+    out[my] <- as.Date(ifelse(is.na(mo), NA, sprintf("%d-%02d-01", yr, mo)), format = "%Y-%m-%d")
   }
   q <- is.na(out) & grepl("Q[1-4].*(19|20)[0-9]{2}", x)
   if (any(q)) {
     qq <- as.integer(sub("^.*Q([1-4]).*$", "\\1", x[q]))
     yy <- as.integer(sub("^.*((19|20)[0-9]{2}).*$", "\\1", x[q]))
-    out[q] <- as.Date(sprintf("%d-%02d-01", yy, qq * 3))
+    out[q] <- as.Date(sprintf("%d-%02d-01", yy, as.integer(qq * 3)), format = "%Y-%m-%d")
   }
   y <- is.na(out) & grepl("^(19|20)[0-9]{2}$", x)
-  out[y] <- as.Date(paste0(x[y], "-07-01"))
+  out[y] <- as.Date(paste0(x[y], "-07-01"), format = "%Y-%m-%d")
   out[!is.na(out) & (out < as.Date("1980-01-01") | out > as.Date("2100-01-01"))] <- NA
   out
 }
@@ -285,7 +285,10 @@ read_aemo <- function(path) {
                                           col_types = "text", .name_repair = "minimal"))
     if (!nrow(head30)) next
     hdr <- which(apply(head30, 1, \(r) {
-      r <- norm_txt(r); any(grepl("^(site|station|project) name$", r)) && sum(nzchar(r)) >= 5
+      # A generator table, not the Change Log (which also has a Site Name column)
+      r <- norm_txt(r)
+      any(grepl("^(site|station|project) name$", r)) && sum(nzchar(r)) >= 5 &&
+        any(grepl("^technology", r)) && any(grepl("status", r))
     }))[1]
     if (is.na(hdr)) next
     d <- suppressMessages(read_excel(path, sheet = sh, skip = hdr, col_names = FALSE,
@@ -454,7 +457,7 @@ ga_standardise <- function(d) {
     ep <- grepl("^[0-9]{10,13}$", x)
     out[ep] <- as.Date(as.POSIXct(as.numeric(x[ep]) / 1000, origin = "1970-01-01", tz = "UTC"))
     st <- !ep & grepl("^[0-9]{4}[/-][0-9]{2}[/-][0-9]{2}", x)
-    out[st] <- as.Date(gsub("/", "-", substr(x[st], 1, 10)))
+    out[st] <- as.Date(gsub("/", "-", substr(x[st], 1, 10)), format = "%Y-%m-%d")
     out
   }
   st <- state_code(pickr(d, "^state$"))
@@ -494,7 +497,7 @@ get_ga <- function() {
     message("GA: using local ", GA_LOCAL, if (length(why)) paste0(" (", paste(why, collapse = "; "), ")"))
     g <- read.csv(GA_LOCAL, colClasses = "character", encoding = "UTF-8") |> as_tibble() |>
       mutate(mw = num(mw), confidence = num(confidence), lat = num(lat), lon = num(lon),
-             revised = as.Date(revised))
+             revised = as.Date(na_if(revised, ""), format = "%Y-%m-%d"))
     return(structure(g, from = GA_LOCAL))
   }
   hub <- list.files(".", pattern = GA_HUB_PATTERN, ignore.case = TRUE)
