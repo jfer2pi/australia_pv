@@ -40,7 +40,7 @@ If no data at all can be loaded, the app shows a page explaining this instead of
 
 Only about 64 sites can take coordinates from Geoscience Australia, so the *Refresh data* workflow also geocodes the rest with OpenStreetMap and commits `au_geocode_cache.csv`, so the deployed app never geocodes.
 
-**Caching.** The parsed result is cached to `au_solar.rds` for 24 h; the sidebar button rebuilds it. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
+**Caching and startup.** Posit Connect Cloud gives an app 60 seconds to start, and on a cloud server every blocked download costs a timeout. So at startup the app only reads files: the pre-built `au_solar.rds` (written by the *Refresh data* workflow), or the committed workbook, GA CSV and geocode cache. Live downloads and new geocoding happen only from the sidebar's rebuild button or the workflow. The cache is reused for 24 h. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
 
 ## How it was built
 
@@ -49,6 +49,8 @@ Only about 64 sites can take coordinates from Geoscience Australia, so the *Refr
 3. **Reading AEMO.** The workbook's sheets carry notes above each table, so the app finds the header row (the one with "Site Name") on each sheet, matches columns by pattern, keeps solar PV rows, and rolls unit-level rows up to one row per site and stage.
 4. **Self-contained.** Everything lives in `app.R`, with no keys or manual downloads needed.
 5. **First deploys.** Posit Connect Cloud got HTTP 403 from AEMO and the app failed to start. AEMO requests now send browser-like headers, and when the workbook still can't be had the app falls back to Geoscience Australia for every state instead of stopping. A rebuild that loses AEMO never overwrites a cached build that had it. GA's National service then answered 404 as well, so the app now tries several GA services, searches GA's catalogue if they move, and reads committed copies of the data. Running the refresh workflow showed that GitHub's servers are refused by both sources too, which settled it: the data files are downloaded by hand and committed, as with the Brazil app.
+
+6. **Startup time.** The next deploy failed Connect Cloud's 60-second startup limit: the app was trying AEMO and several GA services, each waiting on a timeout, before Shiny could listen. Startup now reads committed files only, the workflow commits a pre-built `au_solar.rds`, and connection timeouts are 8 s.
 
 ## Run locally
 

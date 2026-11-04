@@ -3,7 +3,8 @@
 # -----------------------------------------------------------------------------
 # No API keys anywhere.
 #
-# Data (combined at startup, cached to au_solar.rds next to this file):
+# Data (combined from the files next to app.R, cached to au_solar.rds, which the
+# refresh workflow commits so a deployed app starts by just reading it):
 #   1. AEMO, NEM Generation Information (primary, published quarterly).
 #      Every existing and proposed generating unit in the National Electricity
 #      Market (QLD, NSW incl. ACT, VIC, SA, TAS), sheet "Generator Information":
@@ -54,10 +55,15 @@ library(htmltools)
 CACHE_FILE      <- "au_solar.rds"
 CACHE_TTL       <- 24 * 3600
 CACHE_VERSION   <- 2L   # bump when the cached structure changes
-CONNECT_TIMEOUT <- 20   # seconds before giving up on a host
+CONNECT_TIMEOUT <- 8    # seconds before giving up on a host
+# Startup reads the files committed next to app.R and skips live downloads,
+# so the app starts within Posit Connect Cloud's 60 s limit. Live downloads run
+# from the sidebar button and the refresh workflow (options(au_pv.live = TRUE)).
+is_live <- function() isTRUE(getOption("au_pv.live", FALSE))
 GEOCODE_FILE    <- "au_geocode_cache.csv"
 GEOCODE_MAX     <- 600  # most new lookups per build (about 10 min at 1/s)
 # options(au_pv.offline = TRUE) skips all downloads and uses local files only
+# options(au_pv.live = TRUE) downloads even when local copies exist
 # options(au_pv.geocode = FALSE) skips Nominatim (cached results still apply)
 
 UA <- "Mozilla/5.0 (compatible; au-solar-fleet-dashboard; R/httr2)"
@@ -238,6 +244,8 @@ get_aemo <- function() {
   local <- local[!grepl("^~\\$|closure", basename(local), ignore.case = TRUE)]
   local <- if (length(local)) local[which.max(file.mtime(local))] else NULL
   why <- NULL
+  if (!is.null(local) && !is_live())
+    return(list(path = local, name = basename(local), url = AEMO_PAGE, from = "local file"))
   if (!is_offline()) {
     res <- tryCatch({
       url <- find_aemo_xlsx()
@@ -480,7 +488,18 @@ ga_standardise <- function(d) {
     filter(!grepl("thermal|concentrat", tolower(paste(gentype, subfuel))))
 }
 
+ga_read_local <- function() {
+  if (file.exists(GA_LOCAL)) {
+    g <- read.csv(GA_LOCAL, colClasses = "character", encoding = "UTF-8") |> as_tibble() |>
+      mutate(mw = num(mw), confidence = num(confidence), lat = num(lat), lon = num(lon),
+             revised = as.Date(na_if(revised, ""), format = "%Y-%m-%d"))
+    return(structure(g, from = GA_LOCAL))
+  }
+  NULL
+}
+
 get_ga <- function() {
+  if (!is_live() && file.exists(GA_LOCAL)) return(ga_read_local())
   why <- character()
   urls <- GA_ENDPOINTS
   tried <- 0
@@ -582,7 +601,8 @@ geocode_missing <- function(a) {
   cache <- read_geocache()
   a$geo_key <- paste(norm_txt(a$plant), a$state, sep = "|")
   need <- unique(a$geo_key[is.na(a$lat) & !is.na(a$state) & !a$geo_key %in% cache$key])
-  allow <- !is_offline() && !isFALSE(getOption("au_pv.geocode", TRUE))
+  # New lookups only in live builds (refresh button or workflow), never at startup
+  allow <- is_live() && !is_offline() && !isFALSE(getOption("au_pv.geocode", TRUE))
   if (allow && length(need)) {
     need <- head(need, GEOCODE_MAX)
     message("Geocoding ", length(need), " sites with Nominatim (about 1 per second)...")
@@ -1068,6 +1088,7 @@ server <- function(input, output, session) {
     updateActionButton(session, "refresh", label = "Rebuilding…")
     on.exit(updateActionButton(session, "refresh", label = "Rebuild from AEMO and GA"), add = TRUE)
 
+    op <- options(au_pv.live = TRUE); on.exit(options(op), add = TRUE)
     res <- tryCatch(build_data(), error = function(e) e)
     if (inherits(res, "error")) {
       showNotification(paste("Refresh failed:", conditionMessage(res)), type = "error",

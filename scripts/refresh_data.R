@@ -10,6 +10,7 @@
 src <- readLines("app.R", encoding = "UTF-8")
 end <- grep("^# ---- Build \\+ cache", src)[1]
 eval(parse(text = src[seq_len(end - 1)]))
+options(au_pv.live = TRUE)   # this script is where the live downloads happen
 
 changed <- character()
 
@@ -52,5 +53,16 @@ a <- tryCatch({
           sum(is.na(a$lat) & is.na(a$geo_lat)), " AEMO sites still unmapped")
   if (nrow(read_geocache()) != before) changed <- c(changed, GEOCODE_FILE)
 }, error = function(e) message("Geocoding skipped: ", conditionMessage(e)))
+
+# Pre-build the app's data from the files above, so the deployed app starts by
+# reading au_solar.rds instead of downloading anything
+tryCatch({
+  stop_at <- grep("^# A startup without any data", src)[1]
+  eval(parse(text = src[end:(stop_at - 1)]))
+  options(au_pv.live = FALSE)
+  saveRDS(build_data(), CACHE_FILE)
+  changed <- c(changed, CACHE_FILE)
+  message("Pre-built ", CACHE_FILE)
+}, error = function(e) message("Pre-build failed: ", conditionMessage(e)))
 
 writeLines(changed, "refresh_changed.txt")
