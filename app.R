@@ -535,18 +535,23 @@ match_ga <- function(a, g) {
 
 # ---- 3. Nominatim geocoding (cached) ----------------------------------------
 
+GEOCODE_VERSION <- "2"   # bump to re-geocode everything on the next build
 read_geocache <- function() {
-  if (!file.exists(GEOCODE_FILE)) return(tibble(key = character(), lat = numeric(),
-                                                lon = numeric(), label = character()))
-  g <- read.csv(GEOCODE_FILE, colClasses = c("character", "numeric", "numeric", "character"),
-                encoding = "UTF-8")
-  as_tibble(g)
+  empty <- tibble(key = character(), lat = numeric(), lon = numeric(), label = character(),
+                  v = character())
+  if (!file.exists(GEOCODE_FILE)) return(empty)
+  g <- tryCatch(read.csv(GEOCODE_FILE, colClasses = "character", encoding = "UTF-8"),
+                error = \(e) NULL)
+  if (is.null(g) || !"v" %in% names(g)) return(empty)
+  as_tibble(g) |> filter(v == GEOCODE_VERSION) |>
+    mutate(lat = num(lat), lon = num(lon))
 }
 
 # Nominatim asks for an identifying User-Agent (no email needed)
 NOMINATIM_UA <- "au-solar-fleet-dashboard/1.0 (+https://github.com/jfer2pi/australia_pv)"
 
-nominatim <- function(q, state) {
+# kinds: which Nominatim categories count as an answer
+nominatim <- function(q, state, kinds = NULL) {
   Sys.sleep(1.1)
   r <- tryCatch(request(NOMINATIM_URL) |>
                   req_url_query(q = q, format = "jsonv2", limit = 5, countrycodes = "au") |>
@@ -560,6 +565,12 @@ nominatim <- function(q, state) {
   if (is.null(h) || !nrow(h)) return(list(status = "no match"))
   la <- as.numeric(h$lat); lo <- as.numeric(h$lon)
   ok <- in_state(la, lo, rep(state, length(la)))
+  if (!is.null(kinds)) {
+    cat <- if (is.null(h$category)) rep("", nrow(h)) else h$category
+    typ <- if (is.null(h$type)) rep("", nrow(h)) else h$type
+    ok <- ok & (cat %in% kinds | typ %in% c("plant", "generator"))
+    if (!any(ok)) return(list(status = "no match"))
+  }
   if (!any(ok)) return(list(status = "outside state"))
   j <- which(ok)[1]
   list(status = "ok", lat = la[j], lon = lo[j], label = substr(h$display_name[j], 1, 160))
@@ -582,19 +593,30 @@ geocode_missing <- function(a) {
       core <- paste(setdiff(strsplit(norm_txt(a$plant[i]), " ")[[1]], c("pty", "ltd")), collapse = " ")
       res <- nominatim(sprintf("%s, %s", core, region), st); how <- "site"
       if (res$status %in% c("no match", "outside state")) {
-        place <- paste(toks(a$plant[i])[[1]], collapse = " ")
-        place <- gsub("\\b(bess|battery|storage|wind|kci|north|south|east|west|expansion)\\b", "", place)
-        place <- trimws(gsub("\\s+", " ", place))
-        if (nzchar(place) && place != core) {
-          res <- nominatim(sprintf("%s, %s", place, region), st); how <- "town"
+        # Town fallback: the place words in the name, then shorter prefixes of
+        # them, accepting only towns, localities, admin areas or power plants
+        w <- toks(a$plant[i])[[1]]
+        w <- w[!w %in% c("bess", "battery", "storage", "wind", "kci", "north", "south", "east",
+                         "west", "expansion", "system", "remote", "community", "hybrid",
+                         "sun", "trina", "waste", "water", "treatment")]
+        tried <- core
+        for (n in rev(seq_len(min(length(w), 3)))) {
+          place <- paste(w[seq_len(n)], collapse = " ")
+          if (place %in% tried || nchar(place) < 4) next
+          tried <- c(tried, place)
+          res <- nominatim(sprintf("%s, %s", place, region), st,
+                           kinds = c("place", "boundary", "power"))
+          how <- "town"
+          if (res$status == "ok") break
         }
       }
       tally <<- c(tally, if (res$status == "ok") paste("ok", how) else res$status)
       if (res$status == "ok")
         return(tibble(key = k, lat = res$lat, lon = res$lon,
-                      label = paste0(if (how == "town") "near: ", res$label)))
+                      label = paste0(if (how == "town") "near: ", res$label), v = GEOCODE_VERSION))
       if (res$status %in% c("no match", "outside state"))
-        return(tibble(key = k, lat = NA_real_, lon = NA_real_, label = res$status))
+        return(tibble(key = k, lat = NA_real_, lon = NA_real_, label = res$status,
+                      v = GEOCODE_VERSION))
       NULL   # HTTP error or timeout: try again next build
     })
     message("Nominatim results: ", paste(names(table(tally)), table(tally), sep = " = ", collapse = ", "))
@@ -602,7 +624,7 @@ geocode_missing <- function(a) {
     tryCatch(write.csv(cache, GEOCODE_FILE, row.names = FALSE, fileEncoding = "UTF-8"),
              error = \(e) warning("Could not save ", GEOCODE_FILE, call. = FALSE))
   }
-  a |> left_join(rename(cache, geo_lat = lat, geo_lon = lon, geo_label = label),
+  a |> left_join(rename(select(cache, -v), geo_lat = lat, geo_lon = lon, geo_label = label),
                  by = c("geo_key" = "key"))
 }
 
