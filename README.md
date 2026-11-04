@@ -13,14 +13,21 @@ The whole app is one self-contained `app.R`. It downloads its own data, so nothi
 | Source | Used for | Access |
 |---|---|---|
 | [AEMO NEM Generation Information](https://www.aemo.com.au/energy-systems/electricity/national-electricity-market-nem/nem-forecasting-and-planning/forecasting-and-planning-data/generation-information) | Every existing and proposed solar PV site in the NEM (QLD, NSW incl. ACT, VIC, SA, TAS): owner, nameplate MW, status, expected full commercial use date | Quarterly .xlsx, found on AEMO's page and downloaded |
-| [Geoscience Australia, Major Power Stations](https://services.ga.gov.au/gis/rest/services/National_Electricity_Infrastructure/MapServer/1) | Coordinates for AEMO sites (matched by state and name); WA and NT sites, which the NEM file doesn't cover | Keyless ArcGIS REST, CC BY 4.0 |
+| [Geoscience Australia, Major Power Stations](https://services.ga.gov.au/gis/rest/services/Foundation_Electricity_Infrastructure/MapServer/0) | Coordinates for AEMO sites (matched by state and name); WA and NT sites, which the NEM file doesn't cover | Keyless ArcGIS REST, CC BY 4.0 |
 | [OpenStreetMap Nominatim](https://nominatim.openstreetmap.org) | Last-resort location for AEMO sites with no coordinates and no GA match | Keyless, 1 request per second, cached |
 
 **Stages** follow AEMO's status fields: in service is Operating, then Commissioning, Committed (including Committed\*), Anticipated, and Proposed (publicly announced). Withdrawn and retired sites are dropped. For WA and NT, GA's Operational and Proposed statuses are used.
 
 **Locations** come from AEMO's own coordinates when the workbook has them, then a Geoscience Australia name match, then Nominatim. Geocoded points are approximate and say so in the popup and the site table. Sites with no location stay in the tables, marked "not mapped".
 
-**When AEMO blocks the server.** AEMO's site answers some cloud hosts with HTTP 403, which is what happened on the first Posit Connect Cloud deploy. The app no longer stops: it starts on Geoscience Australia alone (operating and proposed sites in every state, no committed pipeline or dates) and says so in the sidebar. Committing a copy of the AEMO workbook next to `app.R` restores the full AEMO view on any host.
+**When the live sources refuse the server.** On the first Posit Connect Cloud deploys, AEMO answered HTTP 403 and Geoscience Australia's National service answered 404. The app now:
+
+- sends browser-like headers to AEMO;
+- tries GA's Foundation service, then the National and older services;
+- falls back to snapshots committed in this repo: `ga_solar_stations.csv` and the AEMO workbook;
+- if AEMO is still missing, runs on Geoscience Australia alone for every state (operating and proposed sites, no committed pipeline or dates) and says so in the sidebar.
+
+The *Refresh data* GitHub Action writes those snapshots on the 3rd of every month, or on demand from the Actions tab, and rewrites `manifest.json`. If AEMO refuses GitHub's servers too, download the workbook yourself and commit it next to `app.R`.
 
 **Caching.** The parsed result is cached to `au_solar.rds` for 24 h; the sidebar button rebuilds it. Geocoding results are saved to `au_geocode_cache.csv` so each site is looked up once. If AEMO can't be reached, the app reads the newest `*generation information*.xlsx` saved next to `app.R`.
 
@@ -30,7 +37,7 @@ The whole app is one self-contained `app.R`. It downloads its own data, so nothi
 2. **Starting point.** The app reuses the US app's structure and theme, and the Brazil app's handling for unreachable hosts and local fallback files.
 3. **Reading AEMO.** The workbook's sheets carry notes above each table, so the app finds the header row (the one with "Site Name") on each sheet, matches columns by pattern, keeps solar PV rows, and rolls unit-level rows up to one row per site and stage.
 4. **Self-contained.** Everything lives in `app.R`, with no keys or manual downloads needed.
-5. **First deploy.** Posit Connect Cloud got HTTP 403 from AEMO and the app failed to start. AEMO requests now send browser-like headers, and when the workbook still can't be had the app falls back to Geoscience Australia for every state instead of stopping. A rebuild that loses AEMO never overwrites a cached build that had it.
+5. **First deploys.** Posit Connect Cloud got HTTP 403 from AEMO and the app failed to start. AEMO requests now send browser-like headers, and when the workbook still can't be had the app falls back to Geoscience Australia for every state instead of stopping. A rebuild that loses AEMO never overwrites a cached build that had it. GA's National service then answered 404 as well, so the app now tries several GA services and reads committed snapshots kept current by a monthly GitHub Action.
 
 ## Run locally
 

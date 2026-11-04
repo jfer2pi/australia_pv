@@ -5,3 +5,4 @@ au_solar.rds
 .DS_Store
 *.Rproj
 rsconnect/
+refresh_changed.txt

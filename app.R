@@ -16,8 +16,10 @@
 #        Committed / Committed*       -> Committed
 #        Anticipated                  -> Anticipated
 #        Publicly announced / proposed-> Proposed
-#   2. Geoscience Australia, National Electricity Infrastructure, Major Power
-#      Stations layer (ArcGIS REST, keyless, CC BY 4.0).
+#   2. Geoscience Australia, Major Power Stations (ArcGIS REST, keyless,
+#      CC BY 4.0). The Foundation and National Electricity Infrastructure
+#      services are tried in turn, then ga_solar_stations.csv if present
+#      (a snapshot written by the refresh workflow).
 #        - coordinates for AEMO sites, matched by state and site name
 #        - WA and NT solar plants, which AEMO's NEM file doesn't cover
 #   3. OpenStreetMap Nominatim (keyless), last resort for AEMO sites with no
@@ -78,9 +80,14 @@ AEMO_PAGE <- paste0("https://www.aemo.com.au/energy-systems/electricity/",
                     "forecasting-and-planning-data/generation-information")
 AEMO_LOCAL_PATTERN <- "generation[-_ ]?information.*\\.xlsx$"
 
-GA_URL  <- paste0("https://services.ga.gov.au/gis/rest/services/",
-                  "National_Electricity_Infrastructure/MapServer/1/query")
-GA_PAGE <- "https://services.ga.gov.au/gis/rest/services/National_Electricity_Infrastructure/MapServer/1"
+# Geoscience Australia publishes the same power stations in more than one
+# service, with different field names; the first one that answers is used
+GA_BASE <- "https://services.ga.gov.au/gis/rest/services/"
+GA_ENDPOINTS <- paste0(GA_BASE, c("Foundation_Electricity_Infrastructure/MapServer/0",
+                                  "National_Electricity_Infrastructure/MapServer/1",
+                                  "Electricity_Infrastructure/MapServer/1"))
+GA_PAGE  <- GA_ENDPOINTS[1]
+GA_LOCAL <- "ga_solar_stations.csv"   # snapshot written by the refresh workflow
 NOMINATIM_URL <- "https://nominatim.openstreetmap.org/search"
 
 STAGES <- c("Operating", "Commissioning", "Committed", "Anticipated", "Proposed")
@@ -335,44 +342,90 @@ read_aemo <- function(path) {
 
 # ---- 2. Geoscience Australia Major Power Stations ---------------------------
 
-GA_FIELDS <- c("NAME", "OPERATIONALSTATUS", "OWNER", "GENERATIONTYPE", "PRIMARYFUELTYPE",
-               "PRIMARYSUBFUELTYPE", "GENERATIONMW", "LOCALITY", "STATE",
-               "SPATIALCONFIDENCE", "REVISED")
+# Rough state from coordinates, for layers without a state field
+state_from_xy <- function(lat, lon) {
+  ord <- c("ACT", "TAS", "VIC", "NSW", "SA", "QLD", "NT", "WA")
+  vapply(seq_along(lat), function(i) {
+    for (st in ord) if (in_state(lat[i], lon[i], st)) return(st)
+    NA_character_
+  }, "")
+}
 
-get_ga <- function() {
+state_from_text <- function(x) {
+  x <- toupper(coalesce(as.character(x), ""))
+  out <- rep(NA_character_, length(x))
+  for (st in c("NSW", "VIC", "QLD", "TAS", "ACT", "WA", "NT", "SA")) {
+    hit <- is.na(out) & (grepl(sprintf("\\b%s\\b", st), x) | grepl(toupper(STATE_NAMES[[st]]), x, fixed = TRUE))
+    out[hit] <- st
+  }
+  out
+}
+
+# Query one ArcGIS layer for solar features, paging through the results
+ga_query <- function(url) {
   feats <- list(); off <- 0
   repeat {
-    resp <- http_get(GA_URL, list(
-      where = "PRIMARYFUELTYPE LIKE '%olar%'", outFields = paste(GA_FIELDS, collapse = ","),
+    resp <- http_get(paste0(url, "/query"), list(
+      where = "primaryfueltype LIKE '%olar%'", outFields = "*",
       returnGeometry = "true", outSR = 4326, f = "json",
       resultOffset = off, resultRecordCount = 1000), timeout = 120)
-    if (resp_status(resp) != 200) stop("GA returned HTTP ", resp_status(resp), call. = FALSE)
+    if (resp_status(resp) != 200) stop("HTTP ", resp_status(resp), call. = FALSE)
     j <- resp_body_json(resp, simplifyVector = FALSE)
-    if (!is.null(j$error)) stop("GA query error: ", j$error$message, call. = FALSE)
+    if (!is.null(j$error)) stop("query error: ", j$error$message, call. = FALSE)
     if (!length(j$features)) break
     feats <- c(feats, j$features)
     if (!isTRUE(j$exceededTransferLimit)) break
     off <- off + length(j$features)
   }
-  if (!length(feats)) stop("GA returned no solar power stations", call. = FALSE)
-  at <- function(f, k) { v <- f$attributes[[k]]; if (is.null(v)) NA else v }
-  g <- tibble(
-    plant  = vapply(feats, at, "", "NAME"),
-    status = vapply(feats, \(f) as.character(at(f, "OPERATIONALSTATUS")), ""),
-    owner  = vapply(feats, \(f) as.character(at(f, "OWNER")), ""),
-    gentype = vapply(feats, \(f) as.character(at(f, "GENERATIONTYPE")), ""),
-    subfuel = vapply(feats, \(f) as.character(at(f, "PRIMARYSUBFUELTYPE")), ""),
-    mw     = vapply(feats, \(f) as.numeric(at(f, "GENERATIONMW")), 0),
-    locality = vapply(feats, \(f) as.character(at(f, "LOCALITY")), ""),
-    state  = state_code(vapply(feats, \(f) as.character(at(f, "STATE")), "")),
-    confidence = vapply(feats, \(f) as.numeric(at(f, "SPATIALCONFIDENCE")), 0),
-    revised = as.Date(as.POSIXct(vapply(feats, \(f) as.numeric(at(f, "REVISED")), 0) / 1000,
-                                 origin = "1970-01-01", tz = "UTC")),
-    lon    = vapply(feats, \(f) if (is.null(f$geometry$x)) NA_real_ else f$geometry$x, 0),
-    lat    = vapply(feats, \(f) if (is.null(f$geometry$y)) NA_real_ else f$geometry$y, 0)
+  if (!length(feats)) stop("no solar features", call. = FALSE)
+  attrs <- bind_rows(lapply(feats, \(f) {
+    v <- lapply(f$attributes, \(x) if (is.null(x)) NA_character_ else as.character(x))
+    names(v) <- tolower(names(v)); as_tibble(v)
+  }))
+  attrs$lon_ <- vapply(feats, \(f) if (is.null(f$geometry$x)) NA_real_ else f$geometry$x, 0)
+  attrs$lat_ <- vapply(feats, \(f) if (is.null(f$geometry$y)) NA_real_ else f$geometry$y, 0)
+  attrs
+}
+
+# Same columns whichever GA layer answered
+ga_standardise <- function(d) {
+  epoch <- function(x) { n <- num(x)
+    as.Date(as.POSIXct(n / 1000, origin = "1970-01-01", tz = "UTC")) }
+  st <- state_code(pickr(d, "^state$"))
+  st <- coalesce(st, state_from_text(paste(pickr(d, "^address$"), pickr(d, "^locality$"))))
+  st <- coalesce(st, state_from_xy(d$lat_, d$lon_))
+  tibble(
+    plant   = pickr(d, "^name$", "powerstation_name"),
+    status  = pickr(d, "^operationalstatus$", "^operational_status$"),
+    owner   = coalesce(na_if(pickr(d, "^owner$"), ""), pickr(d, "^operator$")),
+    gentype = pickr(d, "^generationtype$", "^structuretype$"),
+    subfuel = pickr(d, "^primarysubfueltype$"),
+    mw      = num(pickr(d, "^generationmw$")),
+    locality = pickr(d, "^locality$", "^address$"),
+    state   = st,
+    confidence = num(pickr(d, "^spatialconfidence$")),
+    revised = epoch(pickr(d, "^revised$", "^attribute_date$", "^feature_date$")),
+    lon = d$lon_, lat = d$lat_
   ) |>
     filter(!grepl("thermal|concentrat", tolower(paste(gentype, subfuel))))
-  g
+}
+
+get_ga <- function() {
+  why <- character()
+  if (!is_offline()) for (u in GA_ENDPOINTS) {
+    g <- tryCatch(ga_standardise(ga_query(u)), error = function(e) {
+      why <<- c(why, sprintf("%s: %s", sub(GA_BASE, "", u, fixed = TRUE), conditionMessage(e)))
+      NULL })
+    if (!is.null(g) && nrow(g)) return(structure(g, from = u))
+  }
+  if (file.exists(GA_LOCAL)) {
+    message("GA: using local ", GA_LOCAL, if (length(why)) paste0(" (", paste(why, collapse = "; "), ")"))
+    g <- read.csv(GA_LOCAL, colClasses = "character", encoding = "UTF-8") |> as_tibble() |>
+      mutate(mw = num(mw), confidence = num(confidence), lat = num(lat), lon = num(lon),
+             revised = as.Date(revised))
+    return(structure(g, from = GA_LOCAL))
+  }
+  stop(paste(c("no GA service answered", why), collapse = "; "), call. = FALSE)
 }
 
 # GA points to AEMO sites: same state, clear name overlap
@@ -497,6 +550,7 @@ build_data <- function() {
        aemo_url = if (has_aemo) src$url else AEMO_PAGE,
        aemo_from = if (has_aemo) src$from else "missing",
        ga_n = if (is.null(ga)) NA_integer_ else nrow(ga),
+       ga_from = if (is.null(ga)) NA_character_ else attr(ga, "from"),
        ga_revised = if (is.null(ga)) NA else suppressWarnings(max(ga$revised, na.rm = TRUE)),
        coord_counts = table(factor(coalesce(gens$coord_src, "none"),
                                    c("AEMO", "Geoscience Australia", "OSM geocode (approx.)", "none"))),
@@ -816,7 +870,8 @@ server <- function(input, output, session) {
           " .xlsx next to app.R to add AEMO's pipeline.",
           br(), br(), "Sites: "),
         a("Geoscience Australia", href = GA_PAGE, target = "_blank"),
-        ", Major Power Stations (CC BY 4.0)",
+        ", Major Power Stations (CC BY 4.0",
+        if (identical(s$ga_from, GA_LOCAL)) ", snapshot in the repo", ")",
         if (!is.na(s$ga_n)) sprintf(", %s solar points", s$ga_n),
         if (!is.na(s$ga_revised) && is.finite(s$ga_revised))
           sprintf(", revised up to %s", format(s$ga_revised, "%b %Y")), ".",
