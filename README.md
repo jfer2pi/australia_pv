@@ -1,5 +1,7 @@
 # Australia Solar PV Fleet
 
+**[Open the live app](https://jfer2pi-pv-australia.share.connect.posit.cloud/)** · Part of [Fernando Rodríguez Alvarado's portfolio](https://jfer2pi.github.io)
+
 An R/Shiny dashboard of Australia's utility-scale solar PV fleet and development pipeline, built on open data with no API keys.
 
 Created by Fernando ([@jfer2pi](https://github.com/jfer2pi)), with coding help from Claude (Anthropic).
